@@ -17,8 +17,9 @@
             <b-col>
                 <b-input-group-append>
                     <b-button @click="onChange()">Refresh</b-button>
-                    <b-button v-if="!isHidden" @click="stopTimer()">Stop</b-button>
-                    <b-button v-if="!isHidden" @click="resumeTimer()">Resume</b-button>
+                    <b-button size="sm" @click="refresh(stop)">
+                        {{ stop ? 'Resume' : 'Stop' }}
+                    </b-button>
                 </b-input-group-append>
                 <b-input-group-append>
                     
@@ -178,6 +179,9 @@
             <pre>{{ infoModal.content }}</pre>
         </b-modal>
         <b-modal size="xl" :id="infoRouting.id" scrollable :title="infoModal.title" ok-only @hide="resetInfoModal">
+            <!-- <b-row>
+                <b-col><pre>{{ infoModal.iia }}</pre></b-col>
+            </b-row> -->
             <b-table striped hover 
                 :items="infoRouting.content" 
                 :fields="infoRouting.fields"
@@ -308,7 +312,8 @@ module.exports = {
             infoModal: {
                 id: 'info-modal',
                 title: '',
-                content: ''
+                content: '',
+                iia: '',
             },
             selectedDatabase:'SIT',
             database: [],
@@ -320,12 +325,13 @@ module.exports = {
             kolom: [],
             countdown: 30, // Initial countdown (5 minutes)
             selectedTime:'30',
-            refreshTime: ['Stop','30','60','90'],
+            refreshTime: ['30','60','90'],
             isHidden: false,
             infoRouting: {
                 id: 'info-routing',
                 title: '',
                 content: [],
+                iia: '',
                 fields: [{
                         key: 'id', 
                         label: 'Bin Part ID',
@@ -370,6 +376,7 @@ module.exports = {
                     }
                 ],
             },
+            stop: false,
         }
     },
     created() {
@@ -390,7 +397,17 @@ module.exports = {
         }
     },
     methods: {
-        
+        refresh(isStop){
+            console.log('refresh: ' + isStop);
+            if(!isStop) {
+                this.stop = true;
+                this.stopTimer();
+            }else{
+                this.stop = false;
+                this.resumeTimer();
+            }
+            return this.stop;
+        },
         stopTimer(){
             clearInterval(this.timer);
         },
@@ -423,8 +440,12 @@ module.exports = {
             var mt = item.Msg_Type;
             var prefix = "";
             var acqId = "";
+            var acqName = '';
             var issId = '';
             var issBid = '';
+            var acqBid = '';
+            var bid = '';
+            var iia = '';
             console.log("cekRouting");
             console.log("item: " + trxId);
             
@@ -440,25 +461,56 @@ module.exports = {
                             // console.log('field: ' + field);
                             // console.log('content: ' + element.content);
                             if(field == 'IN.PAN_PREFIX') {
-                                prefix = element.content;
+                                if(element.content != '') {
+                                    prefix = element.content;
+                                }
                             }
                             if(field == 'IN.PARTACQ') {
-                                acqId = element.content;
+                                if(element.content != '') {
+                                    acqId = element.content;
+                                    if(acqId == '1702') {
+                                        acqName = 'BNI';
+                                    }
+                                    if(acqId == '1703') {
+                                        acqName = 'BTN';
+                                    }
+                                    if(acqId == '1704') {
+                                        acqName = 'MANDIRI';
+                                    }
+                                    if(acqId == '1705') {
+                                        acqName = 'BRI';
+                                    }
+                                }
                             }
                             if(field == 'IN.PARTISS') {
                                 issId = element.content;
                             }
                             if(field == 'IN.ISSBID') {
-                                issBid = element.content;
+                                issBid = ', Issuer Bid: ' + element.content;
+                            }
+                            if(field == 'IN.ACQBID') {
+                                acqBid = ', Acquirer Bid: ' + element.content;
+                            }
+                            if(field == 'IN.BID') {
+                                bid = ', Bid: ' + element.content;
+                            }
+                            if(field == 'IN.IIA') {
+                                if(element.content == '1') {
+                                    iia = 'Issuer Approach';
+                                } else {
+                                    iia = 'Acquirer Approach';
+                                }
                             }
                         }
 
                     });
                     // console.log("prefix: " + prefix);
-                    // console.log("acqId: " + acqId);
+                    console.log("iia: " + iia);
                     var db = this.selectedDatabase;
                     console.log("database: "  + db);
-                    this.infoModal.title = 'ID Transaksi: ' + trxId + ', MT: ' + mt + ', Acquirer: ' + acqId + ', Issuer: ' + issId + ', Prefix: ' + prefix;
+                    this.infoModal.title = 'ID Transaksi: ' + trxId + ', MT: ' + mt + ', Acquirer: ' + acqId + ' (' + acqName + '), Issuer: ' + 
+                        issId + ', Prefix: ' + prefix + issBid + acqBid + bid + ', Type: ' + iia;
+                    // this.infoModal.iia = iia;
                     axios.post(this.picker,{ jenis: 'Routing', acquirer: acqId, binLower: prefix, limit: false })
                     .then((resp) => { 
                         // this.items = resp.data;
@@ -466,7 +518,7 @@ module.exports = {
                         console.log("DATA: " + this.infoRouting.content);
                         this.infoRouting.content.forEach(element => {
                             var rule = element.rule;
-                            console.log('rule: ' + rule);
+                            // console.log('rule: ' + rule);
                         });
                     })
                     .catch(errors => { console.error(errors); });                    
@@ -493,13 +545,14 @@ module.exports = {
             // console.log("info disini");
             this.infoModal.title = 'Transaksi Atribut dengan TrxID: ' + TrxID;
             this.infoModal.content = '';
+            this.kolom = [];
             // let containerplugin =
                 axios.post(this.picker,{ jenis: 'TrxAttr', parameter: TrxID})
                 .then((resp) => { 
                     this.infoModal.content = resp.data;
                     this.infoModal.content.forEach(element => {
                         var kol = element.Kolom;
-                        // console.log('element Kolom: ' + kol);
+                        console.log('element Kolom: ' + kol);
                         if(kol == undefined) {
                             console.log('undefined Kolom: ' + kol);
                         }
